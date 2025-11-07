@@ -9,18 +9,25 @@ import { Car, Home, Utensils, Trash2, ShoppingBag, Loader2 } from "lucide-react"
 export interface CarbonFormData {
   travelKmPerDay: number;
   transportMode: string;
-  carpool: string;
+  carpool: boolean;
   electricityUnits: number;
-  acUsage: string;
-  renewableEnergy: string;
+  acUsage: number;
+  renewableEnergy: boolean;
   meatMealsPerWeek: number;
   dairyLitersPerDay: number;
-  localFood: string;
+  localFood: boolean;
   wasteKgPerWeek: number;
-  recycle: string;
+  recycle: boolean;
   waterUsageLiters: number;
   shoppingFreq: number;
   onlineOrders: number;
+  emissions_breakdown?: {
+    transportation: number;
+    electricity: number;
+    diet: number;
+    waste: number;
+    lifestyle: number;
+  };
 }
 
 interface CarbonFormProps {
@@ -29,31 +36,66 @@ interface CarbonFormProps {
 }
 
 export const CarbonForm = ({ onSubmit, isCalculating }: CarbonFormProps) => {
+  // Track form UI state separately from data state
+  const [uiState, setUiState] = useState({
+    acUsage: "occasionally" as "never" | "occasionally" | "daily",
+    carpool: "no" as "yes" | "no",
+    renewableEnergy: "no" as "yes" | "no",
+    localFood: "no" as "yes" | "no",
+    recycle: "no" as "yes" | "no"
+  });
+
   const [formData, setFormData] = useState<CarbonFormData>({
     travelKmPerDay: 30,
     transportMode: "car",
-    carpool: "no",
+    carpool: false,
     electricityUnits: 300,
-    acUsage: "occasionally",
-    renewableEnergy: "no",
+    acUsage: 4, // 0 for never, 4 for occasionally, 8 for daily
+    renewableEnergy: false,
     meatMealsPerWeek: 7,
     dairyLitersPerDay: 1,
-    localFood: "no",
+    localFood: false,
     wasteKgPerWeek: 15,
-    recycle: "no",
+    recycle: false,
     waterUsageLiters: 200,
     shoppingFreq: 5,
     onlineOrders: 10,
   });
 
-  const updateField = (field: keyof CarbonFormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const updateField = (field: keyof CarbonFormData | keyof typeof uiState, value: any) => {
+    // Handle UI state updates
+    if (field in uiState) {
+      setUiState(prev => ({ ...prev, [field]: value }));
+      
+      // Update corresponding form data
+      switch(field) {
+        case 'acUsage':
+          setFormData(prev => ({ 
+            ...prev, 
+            acUsage: value === 'daily' ? 8 : value === 'occasionally' ? 4 : 0 
+          }));
+          break;
+        case 'carpool':
+        case 'renewableEnergy':
+        case 'localFood':
+        case 'recycle':
+          setFormData(prev => ({ 
+            ...prev, 
+            [field]: value === 'yes' 
+          }));
+          break;
+      }
+    } else {
+      // Direct form data updates
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
   };
+
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in">
@@ -101,7 +143,7 @@ export const CarbonForm = ({ onSubmit, isCalculating }: CarbonFormProps) => {
           
           <div className="space-y-3">
             <Label>Do you carpool?</Label>
-            <Select value={formData.carpool} onValueChange={(value) => updateField("carpool", value)}>
+            <Select value={uiState.carpool} onValueChange={(value) => updateField("carpool", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -141,7 +183,7 @@ export const CarbonForm = ({ onSubmit, isCalculating }: CarbonFormProps) => {
           
           <div className="space-y-3">
             <Label>Air conditioning usage</Label>
-            <Select value={formData.acUsage} onValueChange={(value) => updateField("acUsage", value)}>
+            <Select value={uiState.acUsage} onValueChange={(value) => updateField("acUsage", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -155,7 +197,7 @@ export const CarbonForm = ({ onSubmit, isCalculating }: CarbonFormProps) => {
           
           <div className="space-y-3">
             <Label>Use renewable energy?</Label>
-            <Select value={formData.renewableEnergy} onValueChange={(value) => updateField("renewableEnergy", value)}>
+            <Select value={uiState.renewableEnergy} onValueChange={(value) => updateField("renewableEnergy", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -206,7 +248,7 @@ export const CarbonForm = ({ onSubmit, isCalculating }: CarbonFormProps) => {
           
           <div className="space-y-3">
             <Label>Prefer local/seasonal food?</Label>
-            <Select value={formData.localFood} onValueChange={(value) => updateField("localFood", value)}>
+            <Select value={uiState.localFood} onValueChange={(value) => updateField("localFood", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -246,7 +288,7 @@ export const CarbonForm = ({ onSubmit, isCalculating }: CarbonFormProps) => {
           
           <div className="space-y-3">
             <Label>Do you recycle?</Label>
-            <Select value={formData.recycle} onValueChange={(value) => updateField("recycle", value)}>
+            <Select value={uiState.recycle} onValueChange={(value) => updateField("recycle", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

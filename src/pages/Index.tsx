@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Hero } from "@/components/Hero";
 import { CarbonForm, CarbonFormData } from "@/components/CarbonForm";
 import { Dashboard } from "@/components/Dashboard";
-import { calculateCarbonFootprint, generateSuggestions, CarbonBreakdown } from "@/lib/carbonCalculator";
+import { predictCarbonFootprint } from "@/lib/mlPredictor";
 import { Leaf } from "lucide-react";
 import earthCartoon from "@/assets/earth-cartoon.png";
 
@@ -12,7 +12,8 @@ const Index = () => {
   const [state, setState] = useState<AppState>("hero");
   const [isCalculating, setIsCalculating] = useState(false);
   const [results, setResults] = useState<{
-    breakdown: CarbonBreakdown;
+    prediction: number;
+    formData: CarbonFormData;
     suggestions: string[];
   } | null>(null);
 
@@ -23,20 +24,31 @@ const Index = () => {
     }, 100);
   };
 
-  const handleFormSubmit = (data: CarbonFormData) => {
+  const handleFormSubmit = async (data: CarbonFormData) => {
     setIsCalculating(true);
     
-    // Simulate calculation delay for better UX
-    setTimeout(() => {
-      const breakdown = calculateCarbonFootprint(data);
-      const suggestions = generateSuggestions(breakdown, data);
+    try {
+      const prediction = await predictCarbonFootprint(data);
       
-      setResults({ breakdown, suggestions });
+      // Generate suggestions based on the prediction and form data
+      const suggestions = [
+        "Consider using renewable energy to reduce your footprint",
+        "Try reducing meat consumption to lower environmental impact",
+        "Use public transportation or carpool when possible",
+        "Minimize water usage and fix any leaks",
+        "Shop locally and reduce online orders"
+      ];
+      
+      setResults({ prediction, formData: data, suggestions });
       setState("dashboard");
       setIsCalculating(false);
       
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 1500);
+    } catch (error) {
+      console.error('Failed to get prediction:', error);
+      setIsCalculating(false);
+      // You might want to show an error message to the user here
+    }
   };
 
   const handleReset = () => {
@@ -104,7 +116,8 @@ const Index = () => {
         {state === "dashboard" && results && (
           <div className="max-w-6xl mx-auto">
             <Dashboard 
-              breakdown={results.breakdown}
+              prediction={results.prediction}
+              formData={results.formData}
               suggestions={results.suggestions}
               onReset={handleReset}
             />

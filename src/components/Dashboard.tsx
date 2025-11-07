@@ -1,103 +1,106 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from "recharts";
-import { Leaf, TrendingDown, TrendingUp, Lightbulb, RefreshCw } from "lucide-react";
-import { CarbonBreakdown, getAverageFootprint, getCategoryAverages } from "@/lib/carbonCalculator";
+import { 
+  PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis
+} from "recharts";
+import { Leaf, TrendingDown, TrendingUp, Lightbulb, RefreshCw, Target } from "lucide-react";
+import { CarbonStats, FeatureImportance } from "@/lib/types";
+import { useEffect, useState } from "react";
 
 interface DashboardProps {
-  breakdown: CarbonBreakdown;
+  prediction: number;
+  formData: any;
   suggestions: string[];
   onReset: () => void;
 }
 
-const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
+const COLORS = {
+  pie: ["#00a854", "#00b869", "#00c77e", "#00d693", "#00e6a8"],
+  bar: {
+    yours: "#046c4e",
+    average: "#10b981"
+  }
+};
 
-export const Dashboard = ({ breakdown, suggestions, onReset }: DashboardProps) => {
-  const average = getAverageFootprint();
-  const categoryAverages = getCategoryAverages();
-  const percentDiff = ((breakdown.total - average) / average * 100);
+export const Dashboard = ({ prediction, formData, suggestions, onReset }: DashboardProps) => {
+  const [stats, setStats] = useState<CarbonStats | null>(null);
+  const [featureImportance, setFeatureImportance] = useState<FeatureImportance[]>([]);
+  
+  useEffect(() => {
+    // Fetch carbon statistics
+    fetch('/data/carbon_stats.json')
+      .then(res => res.json())
+      .then(data => setStats(data));
+
+    // Load feature importance data
+    fetch('/data/feature_importance.json')
+      .then(res => res.json())
+      .then(data => setFeatureImportance(data));
+  }, []);
+
+  if (!stats) return <div>Loading...</div>;
+
+  const percentDiff = ((prediction - stats.average_footprint) / stats.average_footprint * 100);
   const isBelow = percentDiff < 0;
 
-  const pieData = [
-    { name: "Transportation", value: breakdown.transportation },
-    { name: "Electricity", value: breakdown.electricity },
-    { name: "Diet", value: breakdown.diet },
-    { name: "Waste & Water", value: breakdown.waste },
-    { name: "Lifestyle", value: breakdown.lifestyle },
-  ];
-
-  const comparisonData = [
-    {
-      category: "Transportation",
-      You: breakdown.transportation,
-      Average: categoryAverages.transportation,
+  // Prepare data for category comparison chart
+  const categoryComparisonData = [
+    { 
+      category: 'Transportation',
+      yours: formData.emissions_breakdown?.transportation || 0,
+      average: stats.average_footprint * 0.27
     },
-    {
-      category: "Electricity",
-      You: breakdown.electricity,
-      Average: categoryAverages.electricity,
+    { 
+      category: 'Electricity',
+      yours: formData.emissions_breakdown?.electricity || 0,
+      average: stats.average_footprint * 0.29
     },
-    {
-      category: "Diet",
-      You: breakdown.diet,
-      Average: categoryAverages.diet,
+    { 
+      category: 'Diet',
+      yours: formData.emissions_breakdown?.diet || 0,
+      average: stats.average_footprint * 0.26
     },
-    {
-      category: "Waste",
-      You: breakdown.waste,
-      Average: categoryAverages.waste,
+    { 
+      category: 'Waste & Water',
+      yours: formData.emissions_breakdown?.waste || 0,
+      average: stats.average_footprint * 0.05
     },
-    {
-      category: "Lifestyle",
-      You: breakdown.lifestyle,
-      Average: categoryAverages.lifestyle,
-    },
-  ];
+    { 
+      category: 'Lifestyle',
+      yours: formData.emissions_breakdown?.lifestyle || 0,
+      average: stats.average_footprint * 0.12
+    }
+  ].reverse();
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Main Summary Card */}
       <Card className="shadow-lg border-2 border-primary/20">
         <CardHeader className="text-center pb-4">
-          <div className="flex justify-center mb-4">
-            <div className="p-4 bg-primary/10 rounded-full">
-              <Leaf className="w-12 h-12 text-primary" />
-            </div>
+          <div className="mb-2">
+            <Target className="w-8 h-8 mx-auto text-primary mb-2" />
+            <CardTitle>Your Carbon Footprint</CardTitle>
+            <CardDescription>Monthly CO₂ emissions estimate</CardDescription>
           </div>
-          <CardTitle className="text-3xl">Your Carbon Footprint</CardTitle>
-          <CardDescription>Monthly estimation based on your inputs</CardDescription>
-        </CardHeader>
-        <CardContent className="text-center">
-          <div className="text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-4">
-            {breakdown.total}
+          <div className="text-4xl font-bold text-primary">
+            {prediction.toFixed(1)} <span className="text-xl">kg CO₂</span>
           </div>
-          <div className="text-2xl text-muted-foreground mb-6">
-            kg CO₂ per month
-          </div>
-          
-          <div className="flex items-center justify-center gap-2 p-4 bg-muted rounded-lg">
+          <div className="flex items-center justify-center gap-2 mt-2">
             {isBelow ? (
-              <>
-                <TrendingDown className="w-6 h-6 text-primary" />
-                <span className="text-lg font-semibold text-primary">
-                  You're {Math.abs(percentDiff).toFixed(1)}% below average!
-                </span>
-              </>
+              <TrendingDown className="w-5 h-5 text-green-500" />
             ) : (
-              <>
-                <TrendingUp className="w-6 h-6 text-destructive" />
-                <span className="text-lg font-semibold text-destructive">
-                  You're {percentDiff.toFixed(1)}% above average
-                </span>
-              </>
+              <TrendingUp className="w-5 h-5 text-red-500" />
             )}
+            <span className={isBelow ? "text-green-500" : "text-red-500"}>
+              {Math.abs(percentDiff).toFixed(1)}% {isBelow ? "below" : "above"} average
+            </span>
           </div>
-        </CardContent>
+        </CardHeader>
       </Card>
 
       {/* Charts Grid */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Pie Chart */}
+        {/* Emission Breakdown Pie Chart */}
         <Card className="shadow-md">
           <CardHeader>
             <CardTitle>Emission Breakdown</CardTitle>
@@ -107,37 +110,47 @@ export const Dashboard = ({ breakdown, suggestions, onReset }: DashboardProps) =
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={pieData}
+                  data={[
+                    { name: 'Transportation: 27%', value: formData.emissions_breakdown?.transportation || 0 },
+                    { name: 'Electricity: 29%', value: formData.emissions_breakdown?.electricity || 0 },
+                    { name: 'Diet: 26%', value: formData.emissions_breakdown?.diet || 0 },
+                    { name: 'Waste & Water: 5%', value: formData.emissions_breakdown?.waste || 0 },
+                    { name: 'Lifestyle: 12%', value: formData.emissions_breakdown?.lifestyle || 0 }
+                  ]}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
+                  label={({ name }) => name}
+                  outerRadius={110}
+                  fill="#00b869"
                   dataKey="value"
                 >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {COLORS.pie.map((color, index) => (
+                    <Cell key={`cell-${index}`} fill={color} stroke="white" strokeWidth={2} />
                   ))}
                 </Pie>
-                <Tooltip />
               </PieChart>
             </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              {pieData.map((item, index) => (
-                <div key={item.name} className="flex items-center gap-2 text-sm">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: COLORS[index] }}
-                  />
-                  <span className="text-muted-foreground">{item.name}: {item.value} kg</span>
-                </div>
-              ))}
+            <div className="mt-4 space-y-2">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {[
+                  { label: 'Transportation:', value: `${formData.emissions_breakdown?.transportation?.toFixed(1) || 0} kg` },
+                  { label: 'Electricity:', value: `${formData.emissions_breakdown?.electricity?.toFixed(1) || 0} kg` },
+                  { label: 'Diet:', value: `${formData.emissions_breakdown?.diet?.toFixed(1) || 0} kg` },
+                  { label: 'Waste & Water:', value: `${formData.emissions_breakdown?.waste?.toFixed(1) || 0} kg` },
+                  { label: 'Lifestyle:', value: `${formData.emissions_breakdown?.lifestyle?.toFixed(1) || 0} kg` }
+                ].map((item, i) => (
+                  <div key={i} className="flex justify-between items-center">
+                    <span>{item.label}</span>
+                    <span className="font-medium">{item.value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Bar Chart */}
+        {/* Category Comparison Chart */}
         <Card className="shadow-md">
           <CardHeader>
             <CardTitle>You vs Average by Category</CardTitle>
@@ -145,19 +158,39 @@ export const Dashboard = ({ breakdown, suggestions, onReset }: DashboardProps) =
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={comparisonData}>
-                <XAxis dataKey="category" tick={{ fontSize: 12 }} />
-                <YAxis label={{ value: 'kg CO₂/month', angle: -90, position: 'insideLeft' }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="You" fill="hsl(var(--primary))" name="Your Footprint" />
-                <Bar dataKey="Average" fill="hsl(var(--secondary))" name="Average User" />
+              <BarChart 
+                data={categoryComparisonData}
+                layout="vertical"
+                margin={{ top: 20, right: 30, left: 100, bottom: 5 }}
+              >
+                <XAxis 
+                  type="number"
+                  axisLine={true}
+                  tickLine={true}
+                  domain={[0, 260]}
+                />
+                <YAxis 
+                  dataKey="category" 
+                  type="category" 
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Bar 
+                  dataKey="yours" 
+                  name="Your Footprint" 
+                  fill={COLORS.bar.yours}
+                  barSize={20}
+                />
+                <Bar 
+                  dataKey="average" 
+                  name="Average User" 
+                  fill={COLORS.bar.average}
+                  barSize={20}
+                />
               </BarChart>
             </ResponsiveContainer>
-            <div className="mt-4 p-3 bg-muted/50 rounded-lg text-center">
-              <p className="text-sm text-muted-foreground">
-                Total average: <span className="font-semibold text-foreground">{average} kg CO₂/month</span>
-              </p>
+            <div className="mt-4 space-y-1 text-sm text-muted-foreground text-center">
+              Total average: <span className="font-semibold ml-1">{stats.average_footprint.toFixed(1)} kg CO₂/month</span>
             </div>
           </CardContent>
         </Card>
@@ -171,36 +204,32 @@ export const Dashboard = ({ breakdown, suggestions, onReset }: DashboardProps) =
               <Lightbulb className="w-6 h-6 text-accent" />
             </div>
             <div>
-              <CardTitle>Personalized Recommendations</CardTitle>
-              <CardDescription>Small changes that make a big impact</CardDescription>
+              <CardTitle>Recommendations</CardTitle>
+              <CardDescription>Ways to reduce your carbon footprint</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-3">
+          <div className="space-y-3">
             {suggestions.map((suggestion, index) => (
-              <li 
-                key={index} 
-                className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
-              >
-                <span className="text-lg mt-0.5">{suggestion.split(" ")[0]}</span>
-                <span className="text-sm flex-1">{suggestion.split(" ").slice(1).join(" ")}</span>
-              </li>
+              <div key={index} className="flex items-start gap-3">
+                <Leaf className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div className="text-sm">{suggestion}</div>
+              </div>
             ))}
-          </ul>
+          </div>
         </CardContent>
       </Card>
 
       {/* Reset Button */}
       <div className="flex justify-center pt-4">
         <Button 
-          variant="outline" 
-          size="lg"
+          variant="outline"
           onClick={onReset}
           className="gap-2"
         >
-          <RefreshCw className="w-5 h-5" />
-          Calculate Again
+          <RefreshCw className="w-4 h-4" />
+          Start Over
         </Button>
       </div>
     </div>

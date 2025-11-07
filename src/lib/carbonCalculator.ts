@@ -10,35 +10,109 @@ const EMISSION_FACTORS = {
     bicycle: 0,
     walk: 0,
   },
-  carpool: {
-    yes: 0.5, // 50% reduction
-    no: 1,
-  },
+  carpool: 0.5, // 50% reduction when carpooling
   electricity: 0.5, // kg CO2 per unit
   acUsage: {
-    never: 0,
-    occasionally: 50,
-    daily: 150,
+    0: 0,      // never
+    4: 50,     // occasionally
+    8: 150,    // daily
   },
-  renewableEnergy: {
-    yes: 0.7, // 30% reduction
-    no: 1,
-  },
+  renewableEnergy: 0.7, // 30% reduction when using renewable
   meatMeals: 3.5, // kg CO2 per meal
   dairy: 2.5, // kg CO2 per liter
-  localFood: {
-    yes: 0.85, // 15% reduction
-    no: 1,
-  },
+  localFood: 0.85, // 15% reduction for local food
   waste: 0.5, // kg CO2 per kg of waste
-  recycle: {
-    yes: 0.7, // 30% reduction
-    no: 1,
-  },
+  recycle: 0.7, // 30% reduction for recycling
   water: 0.0003, // kg CO2 per liter
   shopping: 5, // kg CO2 per shopping trip
   onlineOrders: 6, // kg CO2 per order (packaging + delivery)
 };
+
+function calculateFallbackFootprint(data: CarbonFormData) {
+  // Calculate transportation emissions
+  const transportEmissions = 
+    data.travelKmPerDay * 30 * EMISSION_FACTORS.transport[data.transportMode] *
+    (data.carpool ? EMISSION_FACTORS.carpool : 1);
+
+  // Calculate electricity emissions
+  const electricityEmissions = 
+    data.electricityUnits * EMISSION_FACTORS.electricity *
+    (data.renewableEnergy ? EMISSION_FACTORS.renewableEnergy : 1);
+
+  // Calculate food emissions
+  const foodEmissions = 
+    (data.meatMealsPerWeek * EMISSION_FACTORS.meatMeals) +
+    (data.dairyLitersPerDay * 30 * EMISSION_FACTORS.dairy) *
+    (data.localFood ? EMISSION_FACTORS.localFood : 1);
+
+  // Calculate waste emissions
+  const wasteEmissions = 
+    data.wasteKgPerWeek * 4 * EMISSION_FACTORS.waste *
+    (data.recycle ? EMISSION_FACTORS.recycle : 1) +
+    data.waterUsageLiters * EMISSION_FACTORS.water;
+
+  // Calculate lifestyle emissions
+  const lifestyleEmissions = 
+    data.shoppingFreq * EMISSION_FACTORS.shopping +
+    data.onlineOrders * EMISSION_FACTORS.onlineOrders;
+
+  const total = 
+    transportEmissions + 
+    electricityEmissions + 
+    foodEmissions + 
+    wasteEmissions + 
+    lifestyleEmissions;
+
+  return {
+    prediction: total,
+    emissions_breakdown: {
+      transportation: transportEmissions,
+      electricity: electricityEmissions,
+      diet: foodEmissions,
+      waste: wasteEmissions,
+      lifestyle: lifestyleEmissions
+    },
+    recommendations: generateFallbackRecommendations(data)
+  };
+}
+
+function generateFallbackRecommendations(data: CarbonFormData): string[] {
+  const recommendations: string[] = [];
+
+  // Transportation recommendations
+  if (data.transportMode === "car") {
+    if (!data.carpool) {
+      recommendations.push("🚗 Consider carpooling to reduce your transportation emissions");
+    }
+    recommendations.push("🚲 Try cycling or using public transport for shorter trips");
+  }
+
+  // Energy recommendations
+  if (!data.renewableEnergy) {
+    recommendations.push("⚡ Switch to renewable energy sources for your electricity needs");
+  }
+  if (data.acUsage > 6) {
+    recommendations.push("❄️ Reduce AC usage or adjust temperature by a few degrees");
+  }
+
+  // Diet recommendations
+  if (data.meatMealsPerWeek > 5) {
+    recommendations.push("🥗 Consider having more plant-based meals");
+  }
+  if (!data.localFood) {
+    recommendations.push("🏡 Buy more local produce to reduce transportation emissions");
+  }
+
+  // Waste recommendations
+  if (!data.recycle) {
+    recommendations.push("♻️ Start recycling to reduce waste emissions");
+  }
+  if (data.wasteKgPerWeek > 5) {
+    recommendations.push("🗑️ Try composting and reducing single-use items");
+  }
+
+  return recommendations.slice(0, 5);
+}
 
 export interface CarbonBreakdown {
   transportation: number;
@@ -49,40 +123,36 @@ export interface CarbonBreakdown {
   total: number;
 }
 
-export const calculateCarbonFootprint = (data: CarbonFormData): CarbonBreakdown => {
-  // Transportation (monthly)
-  const dailyTransport = data.travelKmPerDay * EMISSION_FACTORS.transport[data.transportMode as keyof typeof EMISSION_FACTORS.transport];
-  const transportation = dailyTransport * 30 * EMISSION_FACTORS.carpool[data.carpool as keyof typeof EMISSION_FACTORS.carpool];
+export async function calculateCarbonFootprint(data: any) {
+  try {
+    const response = await fetch("http://127.0.0.1:5000/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
 
-  // Electricity (monthly)
-  const baseElectricity = data.electricityUnits * EMISSION_FACTORS.electricity;
-  const acImpact = EMISSION_FACTORS.acUsage[data.acUsage as keyof typeof EMISSION_FACTORS.acUsage];
-  const electricity = (baseElectricity + acImpact) * EMISSION_FACTORS.renewableEnergy[data.renewableEnergy as keyof typeof EMISSION_FACTORS.renewableEnergy];
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-  // Diet (monthly)
-  const meatImpact = data.meatMealsPerWeek * EMISSION_FACTORS.meatMeals * 4.3; // ~4.3 weeks per month
-  const dairyImpact = data.dairyLitersPerDay * EMISSION_FACTORS.dairy * 30;
-  const diet = (meatImpact + dairyImpact) * EMISSION_FACTORS.localFood[data.localFood as keyof typeof EMISSION_FACTORS.localFood];
+    const result = await response.json();
+    
+    if (result.status === 'error') {
+      throw new Error(result.error || 'Unknown prediction error');
+    }
 
-  // Waste (monthly)
-  const wasteImpact = data.wasteKgPerWeek * EMISSION_FACTORS.waste * 4.3;
-  const waterImpact = data.waterUsageLiters * EMISSION_FACTORS.water * 30;
-  const waste = (wasteImpact + waterImpact) * EMISSION_FACTORS.recycle[data.recycle as keyof typeof EMISSION_FACTORS.recycle];
+    return {
+      prediction: result.prediction,
+      emissions_breakdown: result.emissions_breakdown,
+      recommendations: result.recommendations
+    };
+  } catch (error) {
+    console.error('Error calculating carbon footprint:', error);
+    // Return fallback calculation
+    return calculateFallbackFootprint(data);
+  }
+}
 
-  // Lifestyle (monthly)
-  const lifestyle = (data.shoppingFreq * EMISSION_FACTORS.shopping) + (data.onlineOrders * EMISSION_FACTORS.onlineOrders);
-
-  const total = transportation + electricity + diet + waste + lifestyle;
-
-  return {
-    transportation: Math.round(transportation * 10) / 10,
-    electricity: Math.round(electricity * 10) / 10,
-    diet: Math.round(diet * 10) / 10,
-    waste: Math.round(waste * 10) / 10,
-    lifestyle: Math.round(lifestyle * 10) / 10,
-    total: Math.round(total * 10) / 10,
-  };
-};
 
 export const getAverageFootprint = () => 850; // Average kg CO2 per month
 
@@ -112,7 +182,7 @@ export const generateSuggestions = (breakdown: CarbonBreakdown, data: CarbonForm
   
   // Transportation suggestions - only if user is NOT already doing these things
   if (topCategory === "transportation" || secondCategory === "transportation") {
-    if (data.transportMode === "car" && data.carpool === "no") {
+    if (data.transportMode === "car" && !data.carpool) {
       suggestions.push("🚗 TOP PRIORITY: Carpooling can cut your transport emissions in half!");
     } else if (data.transportMode === "car") {
       suggestions.push("🚌 Consider using public transport 2-3 times per week to reduce emissions by up to 40%");
@@ -124,12 +194,12 @@ export const generateSuggestions = (breakdown: CarbonBreakdown, data: CarbonForm
   
   // Electricity suggestions - only suggest what they're NOT doing
   if (topCategory === "electricity" || secondCategory === "electricity") {
-    if (data.renewableEnergy === "no") {
+    if (!data.renewableEnergy) {
       suggestions.push("⚡ TOP PRIORITY: Switch to renewable energy plans to reduce electricity emissions by 30%");
     }
-    if (data.acUsage === "daily") {
+    if (data.acUsage > 6) {
       suggestions.push("❄️ Use AC efficiently: set to 24°C and use fans to save 20-30% energy");
-    } else if (data.acUsage === "occasionally" && data.electricityUnits > 400) {
+    } else if (data.acUsage > 3 && data.electricityUnits > 400) {
       suggestions.push("💡 Replace old appliances with energy-efficient models to save up to 40% energy");
     }
     if (data.electricityUnits > 500) {
@@ -144,7 +214,7 @@ export const generateSuggestions = (breakdown: CarbonBreakdown, data: CarbonForm
     } else if (data.meatMealsPerWeek > 5 && data.meatMealsPerWeek <= 10) {
       suggestions.push("🥗 Great job on reducing meat! Try one more plant-based day per week");
     }
-    if (data.localFood === "no") {
+    if (!data.localFood) {
       suggestions.push("🥬 Choose local, seasonal produce to reduce food transportation emissions by 15%");
     }
     if (data.dairyLitersPerDay > 1.5) {
@@ -154,12 +224,12 @@ export const generateSuggestions = (breakdown: CarbonBreakdown, data: CarbonForm
   
   // Waste suggestions - only if NOT already doing
   if (topCategory === "waste" || secondCategory === "waste") {
-    if (data.recycle === "no") {
+    if (!data.recycle) {
       suggestions.push("♻️ TOP PRIORITY: Start recycling! It can reduce waste emissions by 30%");
     }
     if (data.wasteKgPerWeek > 20) {
       suggestions.push("🗑️ Reduce single-use plastics and start composting to cut waste by 50%");
-    } else if (data.wasteKgPerWeek > 15 && data.recycle === "yes") {
+    } else if (data.wasteKgPerWeek > 15 && data.recycle) {
       suggestions.push("🍂 Compost food waste to further reduce landfill emissions");
     }
     if (data.waterUsageLiters > 300) {
